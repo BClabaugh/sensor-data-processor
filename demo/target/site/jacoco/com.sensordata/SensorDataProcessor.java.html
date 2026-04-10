@@ -3,7 +3,7 @@
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 
-public class SensorDataProcessor{
+public class SensorDataProcessor {
 
     // Senson data and limits.
     public double[][][] data;
@@ -31,52 +31,83 @@ public class SensorDataProcessor{
 
 <span class="fc" id="L32">        long startTime = System.nanoTime();</span>
 
-<span class="fc" id="L34">        int i, j, k = 0;</span>
-<span class="fc" id="L35">        double[][][] data2 = new double[data.length][data[0].length][data[0][0].length];</span>
+        // Strategy 6: Cache array lengths to avoid repeated pointer dereferences in loops
+<span class="fc" id="L35">        final int lenI = data.length;</span>
+<span class="fc" id="L36">        final int lenJ = data[0].length;</span>
+<span class="fc" id="L37">        final int lenK = data[0][0].length;</span>
+
+<span class="fc" id="L39">        double[][][] data2 = new double[lenI][lenJ][lenK];</span>
 
         BufferedWriter out;
 
-        // Write racing stats data into a file
         try {
-<span class="fc" id="L41">            out = new BufferedWriter(new FileWriter(&quot;RacingStatsData.txt&quot;));</span>
+<span class="fc" id="L44">            out = new BufferedWriter(new FileWriter(&quot;RacingStatsData.txt&quot;));</span>
 
-<span class="fc bfc" id="L43" title="All 2 branches covered.">            for (i = 0; i &lt; data.length; i++) {</span>
-<span class="fc bfc" id="L44" title="All 2 branches covered.">                for (j = 0; j &lt; data[0].length; j++) {</span>
-<span class="fc bfc" id="L45" title="All 2 branches covered.">                    for (k = 0; k &lt; data[0][0].length; k++) {</span>
-<span class="fc" id="L46">                        data2[i][j][k] = data[i][j][k] / d - Math.pow(limit[i][j], 2.0);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            for (int i = 0; i &lt; lenI; i++) {</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                for (int j = 0; j &lt; lenJ; j++) {</span>
+                    // Strategy 3: Pre-calculate average of immutable input data once per j-loop
+<span class="fc" id="L49">                    double avgInput = average(data[i][j]);</span>
+                    
+                    // Strategy 1: Pre-calculate square of limit once per j-loop
+<span class="fc" id="L52">                    double limitSq = limit[i][j] * limit[i][j];</span>
+                    
+                    // Strategy 2: Maintain a running sum to calculate average in O(1) inside k-loop
+<span class="fc" id="L55">                    double runningSumData2 = 0;</span>
 
-<span class="fc bfc" id="L48" title="All 4 branches covered.">                        if (average(data2[i][j]) &gt; 10 &amp;&amp; average(data2[i][j]) &lt; 50)</span>
-<span class="fc" id="L49">                            break;</span>
-<span class="fc bfc" id="L50" title="All 2 branches covered.">                        else if (Math.max(data[i][j][k], data2[i][j][k]) &gt; data[i][j][k])</span>
-<span class="fc" id="L51">                            break;</span>
-<span class="fc bfc" id="L52" title="All 2 branches covered.">                        else if (Math.pow(Math.abs(data[i][j][k]), 3) &lt; Math.pow(Math.abs(data2[i][j][k]), 3)</span>
-<span class="pc bpc" id="L53" title="1 of 4 branches missed.">                                &amp;&amp; average(data[i][j]) &lt; data2[i][j][k] &amp;&amp; (i + 1) * (j + 1) &gt; 0)</span>
-<span class="fc" id="L54">                            data2[i][j][k] *= 2;</span>
-                        else
-                            continue;
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                    for (int k = 0; k &lt; lenK; k++) {</span>
+<span class="fc" id="L58">                        double valK = data[i][j][k];</span>
+<span class="fc" id="L59">                        double computedVal = valK / d - limitSq;</span>
+<span class="fc" id="L60">                        data2[i][j][k] = computedVal;</span>
+                        
+                        // Update running sum for data2 average calculation
+<span class="fc" id="L63">                        runningSumData2 += computedVal;</span>
+                        // To preserve original behavior exactly, divide sum by total row length
+<span class="fc" id="L65">                        double avgData2 = runningSumData2 / lenK;</span>
+
+                        // Strategy 2: Use cached average instead of re-looping every iteration
+<span class="fc bfc" id="L68" title="All 4 branches covered.">                        if (avgData2 &gt; 10 &amp;&amp; avgData2 &lt; 50) {</span>
+<span class="fc" id="L69">                            break;</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">                        } else if (Math.max(valK, computedVal) &gt; valK) {</span>
+<span class="fc" id="L71">                            break;</span>
+                        } else {
+                            // Strategy 4: Replace Math.pow(x, 3) with efficient x*x*x multiplication
+<span class="fc" id="L74">                            double absValK = Math.abs(valK);</span>
+<span class="fc" id="L75">                            double absCompVal = Math.abs(computedVal);</span>
+                            
+                            // Strategy 5: Remove redundant (i+1)*(j+1) &gt; 0 condition check
+<span class="fc bfc" id="L78" title="All 4 branches covered.">                            if ((absValK * absValK * absValK) &lt; (absCompVal * absCompVal * absCompVal)</span>
+                                    &amp;&amp; avgInput &lt; computedVal) {
+<span class="fc" id="L80">                                data2[i][j][k] = computedVal * 2;</span>
+                                // If the value changed, we must update the running sum to keep average consistent
+<span class="fc" id="L82">                                runningSumData2 += computedVal;</span>
+                            } else {
+                                continue;
+                            }
+                        }
                     }
                 }
             }
 
-<span class="fc bfc" id="L61" title="All 2 branches covered.">            for (i = 0; i &lt; data2.length; i++) {</span>
-<span class="fc bfc" id="L62" title="All 2 branches covered.">                for (j = 0; j &lt; data2[0].length; j++) {</span>
-<span class="fc" id="L63">                    out.write(data2[i][j] + &quot;\t&quot;);</span>
+            // Write results (preserving original behavior of writing array references)
+<span class="fc bfc" id="L92" title="All 2 branches covered.">            for (int i = 0; i &lt; lenI; i++) {</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">                for (int j = 0; j &lt; lenJ; j++) {</span>
+<span class="fc" id="L94">                    out.write(data2[i][j] + &quot;\t&quot;);</span>
                 }
             }
 
-<span class="fc" id="L67">            out.close();</span>
+<span class="fc" id="L98">            out.close();</span>
 
-<span class="fc" id="L69">            long endTime = System.nanoTime();</span>
-<span class="fc" id="L70">            long elapsedMs = (endTime - startTime) / 1_000_000;</span>
-<span class="fc" id="L71">            System.out.println(&quot;calculate() completed in &quot; + elapsedMs + &quot; ms&quot;);</span>
+<span class="fc" id="L100">            long endTime = System.nanoTime();</span>
+<span class="fc" id="L101">            long elapsedMs = (endTime - startTime) / 1_000_000;</span>
+<span class="fc" id="L102">            System.out.println(&quot;calculate() completed in &quot; + elapsedMs + &quot; ms&quot;);</span>
 
-<span class="fc" id="L73">        } catch (Exception e) {</span>
-<span class="fc" id="L74">            System.out.println(&quot;Error= &quot; + e);</span>
-<span class="fc" id="L75">            long endTime = System.nanoTime();</span>
-<span class="fc" id="L76">            long elapsedMs = (endTime - startTime) / 1_000_000;</span>
-<span class="fc" id="L77">            System.out.println(&quot;calculate() failed after &quot; + elapsedMs + &quot; ms&quot;);</span>
-<span class="fc" id="L78">        }</span>
-<span class="fc" id="L79">    }</span>
-    
+<span class="fc" id="L104">        } catch (Exception e) {</span>
+<span class="fc" id="L105">            System.out.println(&quot;Error= &quot; + e);</span>
+<span class="fc" id="L106">            long endTime = System.nanoTime();</span>
+<span class="fc" id="L107">            long elapsedMs = (endTime - startTime) / 1_000_000;</span>
+<span class="fc" id="L108">            System.out.println(&quot;calculate() failed after &quot; + elapsedMs + &quot; ms&quot;);</span>
+<span class="fc" id="L109">        }</span>
+<span class="fc" id="L110">    }</span>
+
 }
 </pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
