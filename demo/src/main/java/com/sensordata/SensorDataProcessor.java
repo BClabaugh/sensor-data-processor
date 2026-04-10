@@ -3,7 +3,7 @@ package com.sensordata;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 
-public class SensorDataProcessor {
+public class SensorDataProcessor{
 
     // Senson data and limits.
     public double[][][] data;
@@ -31,15 +31,12 @@ public class SensorDataProcessor {
 
         long startTime = System.nanoTime();
 
-        // Strategy 6: Cache array lengths to avoid repeated pointer dereferences in loops
-        final int lenI = data.length;
-        final int lenJ = data[0].length;
-        final int lenK = data[0][0].length;
-
-        double[][][] data2 = new double[lenI][lenJ][lenK];
+        int i, j, k = 0;
+        double[][][] data2 = new double[data.length][data[0].length][data[0][0].length];
 
         BufferedWriter out;
 
+        // Write racing stats data into a file
         try {
             out = new BufferedWriter(new FileWriter("RacingStatsData.txt"));
 
@@ -58,10 +55,7 @@ public class SensorDataProcessor {
                         double valK = data[i][j][k];
                         double computedVal = valK / d - limitSq;
                         data2[i][j][k] = computedVal;
-                        
-                        // Update running sum for data2 average calculation
                         runningSumData2 += computedVal;
-                        // To preserve original behavior exactly, divide sum by total row length
                         double avgData2 = runningSumData2 / lenK;
 
                         // Strategy 2: Use cached average instead of re-looping every iteration
@@ -70,11 +64,11 @@ public class SensorDataProcessor {
                         } else if (Math.max(valK, computedVal) > valK) {
                             break;
                         } else {
-                            // Strategy 4: Replace Math.pow(x, 3) with efficient x*x*x multiplication
+                            
                             double absValK = Math.abs(valK);
                             double absCompVal = Math.abs(computedVal);
                             
-                            // Strategy 5: Remove redundant (i+1)*(j+1) > 0 condition check
+                            // Strategy 4/5: Take away Math.pow(because its slow) Remove redundant (i+1)*(j+1) > 0 condition check
                             if ((absValK * absValK * absValK) < (absCompVal * absCompVal * absCompVal)
                                     && avgInput < computedVal) {
                                 data2[i][j][k] = computedVal * 2;
@@ -88,7 +82,7 @@ public class SensorDataProcessor {
                 }
             }
 
-            // Write results (preserving original behavior of writing array references)
+            // Write results
             for (int i = 0; i < lenI; i++) {
                 for (int j = 0; j < lenJ; j++) {
                     out.write(data2[i][j] + "\t");
