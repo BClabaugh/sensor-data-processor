@@ -3,7 +3,7 @@ package com.sensordata;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 
-public class SensorDataProcessor{
+public class SensorDataProcessor {
 
     // Senson data and limits.
     public double[][][] data;
@@ -31,35 +31,66 @@ public class SensorDataProcessor{
 
         long startTime = System.nanoTime();
 
-        int i, j, k = 0;
-        double[][][] data2 = new double[data.length][data[0].length][data[0][0].length];
+        // Strategy 6: Cache array lengths to avoid repeated pointer dereferences in loops
+        final int lenI = data.length;
+        final int lenJ = data[0].length;
+        final int lenK = data[0][0].length;
+
+        double[][][] data2 = new double[lenI][lenJ][lenK];
 
         BufferedWriter out;
 
-        // Write racing stats data into a file
         try {
             out = new BufferedWriter(new FileWriter("RacingStatsData.txt"));
 
-            for (i = 0; i < data.length; i++) {
-                for (j = 0; j < data[0].length; j++) {
-                    for (k = 0; k < data[0][0].length; k++) {
-                        data2[i][j][k] = data[i][j][k] / d - Math.pow(limit[i][j], 2.0);
+            for (int i = 0; i < lenI; i++) {
+                for (int j = 0; j < lenJ; j++) {
+                    // Strategy 3: Pre-calculate average of immutable input data once per j-loop
+                    double avgInput = average(data[i][j]);
+                    
+                    // Strategy 1: Pre-calculate square of limit once per j-loop
+                    double limitSq = limit[i][j] * limit[i][j];
+                    
+                    // Strategy 2: Maintain a running sum to calculate average in O(1) inside k-loop
+                    double runningSumData2 = 0;
 
-                        if (average(data2[i][j]) > 10 && average(data2[i][j]) < 50)
+                    for (int k = 0; k < lenK; k++) {
+                        double valK = data[i][j][k];
+                        double computedVal = valK / d - limitSq;
+                        data2[i][j][k] = computedVal;
+                        
+                        // Update running sum for data2 average calculation
+                        runningSumData2 += computedVal;
+                        // To preserve original behavior exactly, divide sum by total row length
+                        double avgData2 = runningSumData2 / lenK;
+
+                        // Strategy 2: Use cached average instead of re-looping every iteration
+                        if (avgData2 > 10 && avgData2 < 50) {
                             break;
-                        else if (Math.max(data[i][j][k], data2[i][j][k]) > data[i][j][k])
+                        } else if (Math.max(valK, computedVal) > valK) {
                             break;
-                        else if (Math.pow(Math.abs(data[i][j][k]), 3) < Math.pow(Math.abs(data2[i][j][k]), 3)
-                                && average(data[i][j]) < data2[i][j][k] && (i + 1) * (j + 1) > 0)
-                            data2[i][j][k] *= 2;
-                        else
-                            continue;
+                        } else {
+                            // Strategy 4: Replace Math.pow(x, 3) with efficient x*x*x multiplication
+                            double absValK = Math.abs(valK);
+                            double absCompVal = Math.abs(computedVal);
+                            
+                            // Strategy 5: Remove redundant (i+1)*(j+1) > 0 condition check
+                            if ((absValK * absValK * absValK) < (absCompVal * absCompVal * absCompVal)
+                                    && avgInput < computedVal) {
+                                data2[i][j][k] = computedVal * 2;
+                                // If the value changed, we must update the running sum to keep average consistent
+                                runningSumData2 += computedVal;
+                            } else {
+                                continue;
+                            }
+                        }
                     }
                 }
             }
 
-            for (i = 0; i < data2.length; i++) {
-                for (j = 0; j < data2[0].length; j++) {
+            // Write results (preserving original behavior of writing array references)
+            for (int i = 0; i < lenI; i++) {
+                for (int j = 0; j < lenJ; j++) {
                     out.write(data2[i][j] + "\t");
                 }
             }
@@ -77,5 +108,5 @@ public class SensorDataProcessor{
             System.out.println("calculate() failed after " + elapsedMs + " ms");
         }
     }
-    
+
 }
